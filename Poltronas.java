@@ -63,7 +63,6 @@ public class Poltronas {//Início da classe Poltronas
                 System.out.println("Deseja comprar uma poltrona na classe econômica? (s/n)");
                 //Declara e inicialização da variável que lê o input do usuário
                 String resposta1 = respostaLotado.nextLine();
-                
 
                 if (resposta1.equals("s") ){//Início do if caso o cliente queira comprar assentos na classe econômica
                     
@@ -153,7 +152,6 @@ public class Poltronas {//Início da classe Poltronas
                     break;//FInaliza o programa
                 }//fim do if
             }
-            
         }
         dados.close();//Fechando objetos scanner
         respostaLotado.close();//Fechando objeto scanner 
