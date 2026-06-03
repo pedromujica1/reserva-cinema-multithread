@@ -97,10 +97,7 @@ void reservarPrimeiraClasse(bool primeiraClasse[],bool economica[],bool resultad
 
     (*index1)++;
 
-    copiarPoltronas(
-        primeiraClasse,
-        economica,
-        resultado);
+    copiarPoltronas(primeiraClasse,economica,resultado);
 
     printf("\nVoce escolheu a Primeira Classe\n");
     printf("Poltrona atribuida: %d\n", *index1);
@@ -113,15 +110,10 @@ void reservarClasseEconomica(bool primeiraClasse[],bool economica[],bool resulta
 
     (*index2)++;
 
-    copiarPoltronas(
-        primeiraClasse,
-        economica,
-        resultado);
+    copiarPoltronas(primeiraClasse,economica,resultado);
 
     printf("\nVoce escolheu a Classe Economica\n");
-    printf("Poltrona atribuida: %d\n",
-           (*index2) + 5);
-
+    printf("Poltrona atribuida: %d\n",(*index2) + 5);
     mostrarPoltronas(resultado);
 }
 
@@ -143,8 +135,7 @@ int tratarPrimeiraClasseLotada(bool primeiraClasse[],bool economica[],bool resul
                 resultado,
                 index2);
         }
-        else
-        {
+        else{
             printf("Classe Economica tambem esta lotada.\n");
         }
 
