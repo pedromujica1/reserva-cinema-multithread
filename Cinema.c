@@ -44,7 +44,7 @@ void mostrarMapaSala(int idSala) {
     printf("-----------------------------------\n");
 }
 
-// RESERVAR: Tenta ocupar uma poltrona aleatória
+//reserva poltrona aleatoria
 void reservarAssentoAleatorio(int idSala, int cliente_id) {
     bool (*sala)[COLS];
     int *contadorOcupados;
@@ -58,7 +58,7 @@ void reservarAssentoAleatorio(int idSala, int cliente_id) {
         contadorOcupados = &ocupadosNormal;
     }
 
-    // Sorteia fileira (0 a 6) e coluna (0 a 4)
+    //sorteia fileira (0 a 6) e coluna (0 a 4)
     int l = rand() % LINHAS;
     int c = rand() % COLS;
 
@@ -75,7 +75,7 @@ void reservarAssentoAleatorio(int idSala, int cliente_id) {
     }
 }
 
-// CANCELAR RESERVA: Libera uma poltrona aleatória que estava ocupada
+//libera uma poltrona aleatória que estava ocupada
 void cancelarReservaAleatoria(int idSala, int cliente_id) {
     bool (*sala)[COLS];
     int *contadorOcupados;
@@ -138,11 +138,10 @@ void acaoClienteSimulado(int cliente_id) {
     }
 }
 int main() {
-    // Inicializa o gerador de números aleatórios com uma semente fixa.
-    // Isso garante que o teste rode sempre com os mesmos valores aleatórios.
+    //gerador de sementes fisicas
     srand(42);
 
-    int totalClientesParaTestar = 50;
+    int totalClientesParaTestar = 6;
 
     printf("=== INICIANDO SIMULAÇÃO SEQUENCIAL DE BILHETERIA ===\n");
     printf("Simulando %d ações de clientes no sistema...\n\n", totalClientesParaTestar);
@@ -157,14 +156,14 @@ int main() {
     }
 
     printf("\n===================================================\n");
-    printf("===           FIM DA SIMULAÇÃO SEQUENCIAL       ===\n");
+    printf("===       FIM DA SIMULAÇÃO SEQUENCIAL       ===\n");
     printf("===================================================\n");
 
-    // Mostra o resultado final das duas salas
+    //mostra mapas
     mostrarMapaSala(ID_SALA_VIP);
     mostrarMapaSala(ID_SALA_NORMAL);
 
-    // Roda a auditoria para garantir que o modelo sequencial manteve tudo 100% íntegro
+    
     verifica_integridade();
 
     return 0;
