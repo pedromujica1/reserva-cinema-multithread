@@ -118,7 +118,6 @@ void verifica_integridade() {
     printf("Sala Normal (ID: %d) -> Contador: %d | Fisico na Matriz: %d -> %s\n", ID_SALA_NORMAL, ocupadosNormal, somaNormal, (ocupadosNormal == somaNormal) ? "OK" : "CORROMPIDO");
 }
 
-// AÇÃO: Alterna as operações simuladas de forma limpa
 void acaoClienteSimulado(int cliente_id) {
     int idSala;
     
