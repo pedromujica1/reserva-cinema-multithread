@@ -1,29 +1,38 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 
-#define LINHAS 3
-#define COLS 4
-#define RANDOM_MAX 100 // Limite de controle para sorteios, se necessário
+#define LINHAS 7
+#define COLS 5
 
-// Cada matriz representa o mapa físico completo de uma sala distinta
+//IDs das salas
+#define ID_SALA_VIP -1
+#define ID_SALA_NORMAL 1
+
+//matriz para representar o mapa de cada sala de cinema
 bool salaVIP[LINHAS][COLS] = {false};
 bool salaNormal[LINHAS][COLS] = {false};
 
-// Contadores globais de assentos ocupados
+//contadores globais de assentos ocupados
 int ocupadosVIP = 0;
 int ocupadosNormal = 0;
 int capacidadeTotal = LINHAS * COLS;
 
-// Estrutura para controle de clientes se necessário mapear IDs futuros
-typedef struct {
-    int id;
-} cliente;
-
-// Imprime o estado atual de ocupação de uma sala
-void mostrarMapaSala(bool sala[LINHAS][COLS], const char* nomeSala) {
-    printf("\n--- Mapa Atual da Sala %s ---\n", nomeSala);
+//imprime o estado atual de ocupação de uma sala usando o ID numérico
+void mostrarMapaSala(int idSala) {
+    bool (*sala)[COLS];
+    int ocupados;
+    
+    // Substituído o operador ternário por estrutura if-else
+    if (idSala == ID_SALA_VIP) {
+        sala = salaVIP;
+        ocupados = ocupadosVIP;
+    } else {
+        sala = salaNormal;
+        ocupados = ocupadosNormal;
+    }
+    
+    printf("\n--- Mapa Atual da Sala (ID: %d) ---\n", idSala);
     for (int i = 0; i < LINHAS; i++) {
         printf("Fileira %d: ", i + 1);
         for (int j = 0; j < COLS; j++) {
@@ -31,102 +40,132 @@ void mostrarMapaSala(bool sala[LINHAS][COLS], const char* nomeSala) {
         }
         printf("\n");
     }
-    printf("Total Ocupados: %d/%d\n", 
-           (strcmp(nomeSala, "VIP") == 0) ? ocupadosVIP : ocupadosNormal, 
-           capacidadeTotal);
-    printf("-------------------------------\n");
+    printf("Total Ocupados: %d/%d\n", ocupados, capacidadeTotal);
+    printf("-----------------------------------\n");
 }
 
-// RESERVAR (Equivalente ao Sacar): Tenta ocupar uma poltrona aleatória
-void reservarAssentoAleatorio(bool sala[LINHAS][COLS], int *contadorOcupados, const char* nomeSala, int cliente_id, unsigned int *seed) {
-    // Sorteia fileira e coluna baseado nas dimensões da matriz
-    int l = rand_r(seed) % LINHAS;
-    int c = rand_r(seed) % COLS;
+// RESERVAR: Tenta ocupar uma poltrona aleatória
+void reservarAssentoAleatorio(int idSala, int cliente_id) {
+    bool (*sala)[COLS];
+    int *contadorOcupados;
+
+    // Substituído o operador ternário por estrutura if-else
+    if (idSala == ID_SALA_VIP) {
+        sala = salaVIP;
+        contadorOcupados = &ocupadosVIP;
+    } else {
+        sala = salaNormal;
+        contadorOcupados = &ocupadosNormal;
+    }
+
+    // Sorteia fileira (0 a 6) e coluna (0 a 4)
+    int l = rand() % LINHAS;
+    int c = rand() % COLS;
 
     if (*contadorOcupados < capacidadeTotal) {
         if (sala[l][c] == false) {
             sala[l][c] = true;
             (*contadorOcupados)++;
-            printf("Cliente %d RESERVOU assento [%d, %d] na Sala %s\n", cliente_id, l + 1, c + 1, nomeSala);
+            printf("Cliente %d RESERVOU assento [%d, %d] na Sala %d\n", cliente_id, l + 1, c + 1, idSala);
         } else {
-            printf("Cliente %d tentou assento [%d, %d] na Sala %s, mas ja estava ocupado\n", cliente_id, l + 1, c + 1, nomeSala);
+            printf("Cliente %d tentou assento [%d, %d] na Sala %d, mas ja estava ocupado\n", cliente_id, l + 1, c + 1, idSala);
         }
     } else {
-        printf("Sala %s cheia! Cliente %d nao conseguiu vaga\n", nomeSala, cliente_id);
+        printf("Sala %d cheia! Cliente %d nao conseguiu vaga\n", idSala, cliente_id);
     }
 }
 
-// CANCELAR RESERVA (Equivalente ao Depositar): Libera uma poltrona aleatória ocupada
-void cancelarReservaAleatoria(bool sala[LINHAS][COLS], int *contadorOcupados, const char* nomeSala, int cliente_id, unsigned int *seed) {
-    int l = rand_r(seed) % LINHAS;
-    int c = rand_r(seed) % COLS;
+// CANCELAR RESERVA: Libera uma poltrona aleatória que estava ocupada
+void cancelarReservaAleatoria(int idSala, int cliente_id) {
+    bool (*sala)[COLS];
+    int *contadorOcupados;
+
+    // Substituído o operador ternário por estrutura if-else
+    if (idSala == ID_SALA_VIP) {
+        sala = salaVIP;
+        contadorOcupados = &ocupadosVIP;
+    } else {
+        sala = salaNormal;
+        contadorOcupados = &ocupadosNormal;
+    }
+
+    int l = rand() % LINHAS;
+    int c = rand() % COLS;
 
     if (sala[l][c] == true) {
         sala[l][c] = false;
         (*contadorOcupados)--;
-        printf("Cliente %d CANCELOU assento [%d, %d] na Sala %s\n", cliente_id, l + 1, c + 1, nomeSala);
+        printf("Cliente %d CANCELOU assento [%d, %d] na Sala %d\n", cliente_id, l + 1, c + 1, idSala);
     } else {
-        printf("Cliente %d tentou cancelar assento [%d, %d] na Sala %s, mas ja estava livre\n", cliente_id, l + 1, c + 1, nomeSala);
+        printf("Cliente %d tentou cancelar assento [%d, %d] na Sala %d, mas ja estava livre\n", cliente_id, l + 1, c + 1, idSala);
     }
 }
 
-// TROCAR ASSENTO (Equivalente à Transação): Move uma reserva de um lugar para outro da mesma sala
-void trocarAssentoAleatorio(bool sala[LINHAS][COLS], const char* nomeSala, unsigned int *seed) {
-    int l_origem = rand_r(seed) % LINHAS;
-    int c_origem = rand_r(seed) % COLS;
-    
-    int l_destino = rand_r(seed) % LINHAS;
-    int c_destino = rand_r(seed) % COLS;
-
-    // Impede a troca para o mesmo lugar
-    if (l_origem == l_destino && c_origem == c_destino) return;
-
-    // Se a origem estiver ocupada e o destino livre, realiza a troca
-    if (sala[l_origem][c_origem] == true && sala[l_destino][c_destino] == false) {
-        sala[l_origem][c_origem] = false;
-        sala[l_destino][c_destino] = true;
-        printf("Troca de assento na Sala %s de [%d, %d] para [%d, %d]\n", nomeSala, l_origem + 1, c_origem + 1, l_destino + 1, c_destino + 1);
-    }
-}
-
-// VERIFICA INTEGRIDADE (Equivalente ao Verifica): Valida a consistência matemática dos contadores
+// VERIFICA INTEGRIDADE: Valida a consistência matemática comparando os contadores com as matrizes
 void verifica_integridade() {
     int somaVIP = 0;
     int somaNormal = 0;
 
-    // Varre fisicamente a matriz VIP
     for (int i = 0; i < LINHAS; i++) {
         for (int j = 0; j < COLS; j++) {
             if (salaVIP[i][j]) somaVIP++;
-        }
-    }
-
-    // Varre fisicamente a matriz Normal
-    for (int i = 0; i < LINHAS; i++) {
-        for (int j = 0; j < COLS; j++) {
             if (salaNormal[i][j]) somaNormal++;
         }
     }
 
     printf("\n[AUDITORIA DE INTEGRIDADE]\n");
-    printf("Sala VIP -> Contador: %d | Fisico na Matriz: %d -> %s\n", ocupadosVIP, somaVIP, (ocupadosVIP == somaVIP) ? "OK" : "CORROMPIDO");
-    printf("Sala Normal -> Contador: %d | Fisico na Matriz: %d -> %s\n", ocupadosNormal, somaNormal, (ocupadosNormal == somaNormal) ? "OK" : "CORROMPIDO");
+    printf("Sala VIP (ID: %d)    -> Contador: %d | Fisico na Matriz: %d -> %s\n", ID_SALA_VIP, ocupadosVIP, somaVIP, (ocupadosVIP == somaVIP) ? "OK" : "CORROMPIDO");
+    printf("Sala Normal (ID: %d) -> Contador: %d | Fisico na Matriz: %d -> %s\n", ID_SALA_NORMAL, ocupadosNormal, somaNormal, (ocupadosNormal == somaNormal) ? "OK" : "CORROMPIDO");
 }
 
-// AÇÃO (Equivalente ao Acao): Rotina lógica que alterna entre operações por iteração
-void acaoClienteSimulado(int cliente_id, unsigned int *seed) {
-    int r = rand_r(seed) % 2; // Sorteia entre tentar Sala VIP ou Normal
-    int operacao = rand_r(seed) % 2; // Sorteia entre reservar e cancelar
-
-    if (r == 0) {
-        if (operacao == 0)
-            reservarAssentoAleatorio(salaVIP, &ocupadosVIP, "VIP", cliente_id, seed);
-        else
-            cancelarReservaAleatoria(salaVIP, &ocupadosVIP, "VIP", cliente_id, seed);
+// AÇÃO: Alterna as operações simuladas de forma limpa
+void acaoClienteSimulado(int cliente_id) {
+    int idSala;
+    
+    // Substituído o operador ternário por estrutura if-else
+    if (rand() % 2 == 0) {
+        idSala = ID_SALA_VIP;
     } else {
-        if (operacao == 0)
-            reservarAssentoAleatorio(salaNormal, &ocupadosNormal, "Normal", cliente_id, seed);
-        else
-            cancelarReservaAleatoria(salaNormal, &ocupadosNormal, "Normal", cliente_id, seed);
+        idSala = ID_SALA_NORMAL;
     }
+    
+    int operacao = rand() % 2; // 0 para reservar, 1 para cancelar
+
+    if (operacao == 0) {
+        reservarAssentoAleatorio(idSala, cliente_id);
+    } else {
+        cancelarReservaAleatoria(idSala, cliente_id);
+    }
+}
+int main() {
+    // Inicializa o gerador de números aleatórios com uma semente fixa.
+    // Isso garante que o teste rode sempre com os mesmos valores aleatórios.
+    srand(42);
+
+    int totalClientesParaTestar = 50;
+
+    printf("=== INICIANDO SIMULAÇÃO SEQUENCIAL DE BILHETERIA ===\n");
+    printf("Simulando %d ações de clientes no sistema...\n\n", totalClientesParaTestar);
+
+    // Loop que simula vários clientes entrando no sistema um após o outro
+    for (int i = 1; i <= totalClientesParaTestar; i++) {
+        printf("-----------------------------------\n");
+        printf("Ação número: %d\n", i);
+        
+        // Passa o 'i' como ID do cliente para sabermos quem está agindo
+        acaoClienteSimulado(i);
+    }
+
+    printf("\n===================================================\n");
+    printf("===           FIM DA SIMULAÇÃO SEQUENCIAL       ===\n");
+    printf("===================================================\n");
+
+    // Mostra o resultado final das duas salas
+    mostrarMapaSala(ID_SALA_VIP);
+    mostrarMapaSala(ID_SALA_NORMAL);
+
+    // Roda a auditoria para garantir que o modelo sequencial manteve tudo 100% íntegro
+    verifica_integridade();
+
+    return 0;
 }
