@@ -150,7 +150,7 @@ void cancelarReserva(Cinefilo *cinefilo) {
     cinefilo->possuiReserva = false;
 }
 
-// VERIFICA INTEGRIDADE: Valida a consistência matemática comparando os contadores com as matrizes
+//validar a consistência matemática comparando os contadores com as matrizes
 void verifica_integridade() {
     int somaVIP = 0;
     int somaNormal = 0;
@@ -185,7 +185,7 @@ void acaoClienteSimulado(Cinefilo *cinefilo) {
 
 int main() {
 
-    srand(42);
+    srand(time(NULL));
 
     int totalClientesParaTestar = 10;
 
