@@ -9,9 +9,17 @@
 #define ID_SALA_VIP -1
 #define ID_SALA_NORMAL 1
 
-//matriz para representar o mapa de cada sala de cinema
-bool salaVIP[LINHAS][COLS] = {false};
-bool salaNormal[LINHAS][COLS] = {false};
+typedef struct {
+    int id;
+    int salaReservada;
+    int linha;
+    int coluna;
+    bool possuiReserva;
+} Cinefilo;
+
+//matrizes para mapear salas fisicas do cinema
+int salaVIP[LINHAS][COLS] = {0};
+int salaNormal[LINHAS][COLS] = {0};
 
 //contadores globais de assentos ocupados
 int ocupadosVIP = 0;
@@ -20,10 +28,9 @@ int capacidadeTotal = LINHAS * COLS;
 
 //imprime o estado atual de ocupação de uma sala usando o ID numérico
 void mostrarMapaSala(int idSala) {
-    bool (*sala)[COLS];
+    int (*sala)[COLS];
     int ocupados;
-    
-    // Substituído o operador ternário por estrutura if-else
+   
     if (idSala == ID_SALA_VIP) {
         sala = salaVIP;
         ocupados = ocupadosVIP;
@@ -31,57 +38,99 @@ void mostrarMapaSala(int idSala) {
         sala = salaNormal;
         ocupados = ocupadosNormal;
     }
-    
-    printf("\n--- Mapa Atual da Sala (ID: %d) ---\n", idSala);
+    printf("=========================================\n");
+    if (idSala == ID_SALA_VIP)
+        printf("SALA VIP\n");
+    else
+        printf("SALA NORMAL\n");
+
     for (int i = 0; i < LINHAS; i++) {
-        printf("Fileira %d: ", i + 1);
+
+        printf("F%02d | ", i + 1);
+
         for (int j = 0; j < COLS; j++) {
-            printf("[%d] ", sala[i][j]); 
+
+            if (sala[i][j] == 0)
+                printf("[--] ");
+            else
+                printf("[%02d] ", sala[i][j]);
         }
+
         printf("\n");
     }
-    printf("Total Ocupados: %d/%d\n", ocupados, capacidadeTotal);
-    printf("-----------------------------------\n");
+    printf("\nOcupação total: %d/%d\n",ocupados,capacidadeTotal);
+
+    printf("=========================================\n");
 }
 
 //reserva poltrona aleatoria
-void reservarAssentoAleatorio(int idSala, int cliente_id) {
-    bool (*sala)[COLS];
+void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
+
+    //se cinefilo, já tem reserva, acaba execução
+    if (cinefilo->possuiReserva){
+        printf("Cinéfilo %d já possui uma reserva .\n",cinefilo->id);
+        return;
+    }
+    int (*sala)[COLS];
     int *contadorOcupados;
 
-    // Substituído o operador ternário por estrutura if-else
-    if (idSala == ID_SALA_VIP) {
+    //define as matrizes da sala e o contador de ocupados
+    if (idSala == ID_SALA_VIP){
         sala = salaVIP;
         contadorOcupados = &ocupadosVIP;
     } else {
         sala = salaNormal;
         contadorOcupados = &ocupadosNormal;
     }
+    //verifica se sala está cheia
+    if(*contadorOcupados >= capacidadeTotal){
+        printf("Sala %d cheia!\n",idSala);
+        return;
+    }
 
-    //sorteia fileira (0 a 6) e coluna (0 a 4)
-    int l = rand() % LINHAS;
-    int c = rand() % COLS;
+    //tentativas maximas para cenario de falha
+    int tentativas = 0;
+    while (tentativas < 50){
+        //definindo assentos aleatorios aka posições da matriz
+        int l = rand() % LINHAS;
+        int c = rand() % COLS;
 
-    if (*contadorOcupados < capacidadeTotal) {
-        if (sala[l][c] == false) {
-            sala[l][c] = true;
+        //se assento ocupado é igual a 0, significa q o assento está livre
+        if(sala[l][c] == 0){
+
+            //atualização de matriz como valor do id do cliente
+            sala[l][c] = cinefilo->id;
+            //atualização do struct do cinefilo
+            cinefilo->possuiReserva = true;
+            cinefilo->salaReservada = idSala;
+            cinefilo->linha = l;
+            cinefilo->coluna = c;
+
+            //atualização de contador de ocupados
             (*contadorOcupados)++;
-            printf("Cliente %d RESERVOU assento [%d, %d] na Sala %d\n", cliente_id, l + 1, c + 1, idSala);
-        } else {
-            printf("Cliente %d tentou assento [%d, %d] na Sala %d, mas ja estava ocupado\n", cliente_id, l + 1, c + 1, idSala);
+
+            printf("[RESERVA]\n" "Cliente : %d\n" "Sala    : %d\n" "Assento : [%d,%d]\n" "Status  : SUCESSO\n\n", cinefilo->id,idSala,l + 1,c + 1);
+            return;
         }
-    } else {
-        printf("Sala %d cheia! Cliente %d nao conseguiu vaga\n", idSala, cliente_id);
+        else{
+            printf("Cliente %d não encontrou assento livre.\n",cinefilo->id);
+        }
+        tentativas++;
     }
 }
 
-//libera uma poltrona aleatória que estava ocupada
-void cancelarReservaAleatoria(int idSala, int cliente_id) {
-    bool (*sala)[COLS];
+void cancelarReserva(Cinefilo *cinefilo) {
+    //se cinefilo, não possui reserva, acaba execução
+    if (!cinefilo->possuiReserva){
+        printf("Cinéfilo %d não possui uma reserva .\n",cinefilo->id);
+        return;
+    }
+
+    int (*sala)[COLS];
     int *contadorOcupados;
 
     // Substituído o operador ternário por estrutura if-else
-    if (idSala == ID_SALA_VIP) {
+    if (cinefilo->salaReservada == ID_SALA_VIP) {
         sala = salaVIP;
         contadorOcupados = &ocupadosVIP;
     } else {
@@ -89,16 +138,16 @@ void cancelarReservaAleatoria(int idSala, int cliente_id) {
         contadorOcupados = &ocupadosNormal;
     }
 
-    int l = rand() % LINHAS;
-    int c = rand() % COLS;
+    //troca valor da matriz por 0
+    sala[cinefilo->linha][cinefilo->coluna] = 0;
 
-    if (sala[l][c] == true) {
-        sala[l][c] = false;
-        (*contadorOcupados)--;
-        printf("Cliente %d CANCELOU assento [%d, %d] na Sala %d\n", cliente_id, l + 1, c + 1, idSala);
-    } else {
-        printf("Cliente %d tentou cancelar assento [%d, %d] na Sala %d, mas ja estava livre\n", cliente_id, l + 1, c + 1, idSala);
-    }
+    //atualiza contador
+    (*contadorOcupados)--;
+
+    printf("[CANCELAMENTO]\n" "Cliente : %d\n" "Sala    : %d\n" "Assento : [%d,%d]\n" "Status  : SUCESSO\n\n",cinefilo->id,cinefilo->salaReservada, cinefilo->linha + 1,cinefilo->coluna + 1);
+
+    
+    cinefilo->possuiReserva = false;
 }
 
 // VERIFICA INTEGRIDADE: Valida a consistência matemática comparando os contadores com as matrizes
@@ -118,51 +167,59 @@ void verifica_integridade() {
     printf("Sala Normal (ID: %d) -> Contador: %d | Fisico na Matriz: %d -> %s\n", ID_SALA_NORMAL, ocupadosNormal, somaNormal, (ocupadosNormal == somaNormal) ? "OK" : "CORROMPIDO");
 }
 
-void acaoClienteSimulado(int cliente_id) {
+void acaoClienteSimulado(Cinefilo *cinefilo) {
     int idSala;
-    
-    // Substituído o operador ternário por estrutura if-else
-    if (rand() % 2 == 0) {
-        idSala = ID_SALA_VIP;
-    } else {
-        idSala = ID_SALA_NORMAL;
-    }
-    
-    int operacao = rand() % 2; // 0 para reservar, 1 para cancelar
 
-    if (operacao == 0) {
-        reservarAssentoAleatorio(idSala, cliente_id);
-    } else {
-        cancelarReservaAleatoria(idSala, cliente_id);
-    }
+    if (rand() % 2 == 0)
+        idSala = ID_SALA_VIP;
+    else
+        idSala = ID_SALA_NORMAL;
+
+    int operacao = rand() % 2;
+
+    if (operacao == 0)
+        reservarAssentoAleatorio(idSala, cinefilo);
+    else
+        cancelarReserva(cinefilo);
 }
+
 int main() {
-    //gerador de sementes fisicas
+
     srand(42);
 
-    int totalClientesParaTestar = 6;
+    int totalClientesParaTestar = 10;
 
-    printf("=== INICIANDO SIMULAÇÃO SEQUENCIAL DE BILHETERIA ===\n");
-    printf("Simulando %d ações de clientes no sistema...\n\n", totalClientesParaTestar);
+    Cinefilo clientes[100];
 
-    // Loop que simula vários clientes entrando no sistema um após o outro
-    for (int i = 1; i <= totalClientesParaTestar; i++) {
-        printf("-----------------------------------\n");
-        printf("Ação número: %d\n", i);
-        
-        // Passa o 'i' como ID do cliente para sabermos quem está agindo
-        acaoClienteSimulado(i);
+    for (int i = 0; i < 100; i++) {
+
+        clientes[i].id = i + 1;
+        clientes[i].possuiReserva = false;
+        clientes[i].linha = -1;
+        clientes[i].coluna = -1;
+        clientes[i].salaReservada = 0;
     }
 
-    printf("\n===================================================\n");
-    printf("===       FIM DA SIMULAÇÃO SEQUENCIAL       ===\n");
-    printf("===================================================\n");
+    printf("=========================================\n");
+    printf(" SISTEMA DE BILHETERIA - MODO SEQUENCIAL\n");
+    printf("=========================================\n");
 
-    //mostra mapas
+    for (int i = 0; i < totalClientesParaTestar; i++) {
+
+        printf("\n-----------------------------------------\n");
+        printf("AÇÃO %d\n", i + 1);
+        printf("-----------------------------------------\n");
+
+        acaoClienteSimulado(&clientes[i]);
+    }
+
+    printf("\n\n=========================================\n");
+    printf("     FIM DA SIMULAÇÃO SEQUENCIAL\n");
+    printf("=========================================\n");
+
     mostrarMapaSala(ID_SALA_VIP);
     mostrarMapaSala(ID_SALA_NORMAL);
 
-    
     verifica_integridade();
 
     return 0;
