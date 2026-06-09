@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
+#include <semaphore.h>
 
 #define LINHAS 7
 #define COLS 5
@@ -11,214 +11,306 @@
 #define ID_SALA_VIP -1
 #define ID_SALA_NORMAL 1
 
-// Quantidade de clientes simulados
-#define TOTAL_CLIENTES 50
+#define TOTAL_CLIENTES 10
+#define MAX_CLIENTES 100
 
-// Matrizes para representar o mapa de cada sala
-bool salaVIP[LINHAS][COLS] = {false};
-bool salaNormal[LINHAS][COLS] = {false};
+typedef struct {
+    int id;
+    int salaReservada;
+    int linha;
+    int coluna;
+    bool possuiReserva;
+} Cinefilo;
 
-//Contadores globais de assentos ocupados
+// Matrizes para mapear salas fisicas do cinema
+int salaVIP[LINHAS][COLS] = {0};
+int salaNormal[LINHAS][COLS] = {0};
+
+// Contadores globais de assentos ocupados
 int ocupadosVIP = 0;
 int ocupadosNormal = 0;
 int capacidadeTotal = LINHAS * COLS;
 
-// Mutexes para proteger cada sala separadamente
-pthread_mutex_t mutexVIP = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutexNormal = PTHREAD_MUTEX_INITIALIZER;
+/*
+    Semaforos usados como mutex.
 
-// Estrutura para passar dados para cada thread
-typedef struct {
-    int cliente_id;
-} ClienteArgs;
+    Valor inicial 1:
+    - uma thread entra na secao critica
+    - as outras esperam
+*/
+sem_t semVIP;
+sem_t semNormal;
 
-// Função auxiliar para selecionar a sala, contador e mutex corretos
-void selecionarSala(int idSala, bool (**sala)[COLS], int **contadorOcupados, pthread_mutex_t **mutexSala
-) {
-    if (idSala == ID_SALA_VIP) {
-        *sala = salaVIP;
-        *contadorOcupados = &ocupadosVIP;
-        *mutexSala = &mutexVIP;
-    } else {
-        *sala = salaNormal;
-        *contadorOcupados = &ocupadosNormal;
-        *mutexSala = &mutexNormal;
-    }
+/*
+    Semaforo para proteger o rand().
+
+    Como varias threads podem chamar rand() ao mesmo tempo,
+    usamos um semaforo separado para evitar acesso simultaneo.
+*/
+sem_t semRandom;
+
+int numeroAleatorio(int limite) {
+    int valor;
+
+    sem_wait(&semRandom);
+    valor = rand() % limite;
+    sem_post(&semRandom);
+
+    return valor;
 }
 
-// Imprime o estado atual de ocupação de uma sala
+// Imprime o estado atual de ocupacao de uma sala usando o ID numerico
 void mostrarMapaSala(int idSala) {
-    
-    bool (*sala)[COLS];
-    int ocupados;
-    pthread_mutex_t *mutexSala;
-
     if (idSala == ID_SALA_VIP) {
-        sala = salaVIP;
-        ocupados = ocupadosVIP;
-        mutexSala = &mutexVIP;
-    } else if (idSala == ID_SALA_NORMAL) {
-        sala = salaNormal;
-        ocupados = ocupadosNormal;
-        mutexSala = &mutexNormal;
-    } else {
-        printf("ID de sala invalido: %d\n", idSala);
-        return;
-    }
+        sem_wait(&semVIP);
 
-    pthread_mutex_lock(mutexSala);
+        printf("=========================================\n");
+        printf("SALA VIP\n");
 
-    printf("\n--- Mapa Atual da Sala (ID: %d) ---\n", idSala);
+        for (int i = 0; i < LINHAS; i++) {
+            printf("F%02d | ", i + 1);
 
-    for (int i = 0; i < LINHAS; i++) {
-        printf("Fileira %d: ", i + 1);
+            for (int j = 0; j < COLS; j++) {
+                if (salaVIP[i][j] == 0)
+                    printf("[--] ");
+                else
+                    printf("[%02d] ", salaVIP[i][j]);
+            }
 
-        for (int j = 0; j < COLS; j++) {
-            printf("[%c] ", sala[i][j] ? 'X' : ' ');
+            printf("\n");
         }
 
-        printf("\n");
+        printf("\nOcupacao total: %d/%d\n", ocupadosVIP, capacidadeTotal);
+        printf("=========================================\n");
+
+        sem_post(&semVIP);
     }
 
-    printf("Total Ocupados: %d/%d\n", ocupados, capacidadeTotal);
-    printf("-----------------------------------\n");
+    else if (idSala == ID_SALA_NORMAL) {
+        sem_wait(&semNormal);
 
-    pthread_mutex_unlock(mutexSala);
+        printf("=========================================\n");
+        printf("SALA NORMAL\n");
+
+        for (int i = 0; i < LINHAS; i++) {
+            printf("F%02d | ", i + 1);
+
+            for (int j = 0; j < COLS; j++) {
+                if (salaNormal[i][j] == 0)
+                    printf("[--] ");
+                else
+                    printf("[%02d] ", salaNormal[i][j]);
+            }
+
+            printf("\n");
+        }
+
+        printf("\nOcupacao total: %d/%d\n", ocupadosNormal, capacidadeTotal);
+        printf("=========================================\n");
+
+        sem_post(&semNormal);
+    }
+
+    else {
+        printf("ID de sala invalido: %d\n", idSala);
+    }
 }
 
-// RESERVAR: tenta ocupar uma poltrona aleatória disponível
-void reservarAssentoAleatorio(int idSala, int cliente_id) {
-    bool (*sala)[COLS];
-    int *contadorOcupados;
-    pthread_mutex_t *mutexSala;
+// Reserva poltrona aleatoria
+void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
+    int tentativas = 0;
 
-    selecionarSala(idSala, &sala, &contadorOcupados, &mutexSala);
-
-    pthread_mutex_lock(mutexSala);
-
-    if (*contadorOcupados >= capacidadeTotal) {
-        printf("Sala %d cheia! Cliente %d nao conseguiu vaga\n",
-               idSala, cliente_id);
-
-        pthread_mutex_unlock(mutexSala);
+    /*
+        Como cada cinefilo pertence a uma unica thread nesta simulacao,
+        essa verificacao nao precisa de semaforo proprio.
+    */
+    if (cinefilo->possuiReserva) {
+        printf("Cinefilo %d ja possui uma reserva.\n", cinefilo->id);
         return;
     }
 
-    int l;
-    int c;
+    if (idSala == ID_SALA_VIP) {
+        sem_wait(&semVIP);
 
-    /*
-        Enquanto houver vaga, sorteia até encontrar
-        uma poltrona livre.
-    */
-    do {
-        l = rand() % LINHAS;
-        c = rand() % COLS;
-    } while (sala[l][c] == true);
+        if (ocupadosVIP >= capacidadeTotal) {
+            printf("Sala VIP cheia!\n");
 
-    sala[l][c] = true;
-    (*contadorOcupados)++;
+            sem_post(&semVIP);
+            return;
+        }
 
-    printf("Cliente %d RESERVOU assento [%d, %d] na Sala %d\n",
-           cliente_id, l + 1, c + 1, idSala);
+        while (tentativas < 50) {
+            int l = numeroAleatorio(LINHAS);
+            int c = numeroAleatorio(COLS);
 
-    pthread_mutex_unlock(mutexSala);
+            if (salaVIP[l][c] == 0) {
+                salaVIP[l][c] = cinefilo->id;
+
+                cinefilo->possuiReserva = true;
+                cinefilo->salaReservada = ID_SALA_VIP;
+                cinefilo->linha = l;
+                cinefilo->coluna = c;
+
+                ocupadosVIP++;
+
+                printf("[RESERVA]\n"
+                       "Cliente : %d\n"
+                       "Sala    : VIP (%d)\n"
+                       "Assento : [%d,%d]\n"
+                       "Status  : SUCESSO\n\n",
+                       cinefilo->id,
+                       ID_SALA_VIP,
+                       l + 1,
+                       c + 1);
+
+                sem_post(&semVIP);
+                return;
+            }
+
+            tentativas++;
+        }
+
+        printf("Cliente %d nao encontrou assento livre na Sala VIP.\n",
+               cinefilo->id);
+
+        sem_post(&semVIP);
+    }
+
+    else if (idSala == ID_SALA_NORMAL) {
+        sem_wait(&semNormal);
+
+        if (ocupadosNormal >= capacidadeTotal) {
+            printf("Sala Normal cheia!\n");
+
+            sem_post(&semNormal);
+            return;
+        }
+
+        while (tentativas < 50) {
+            int l = numeroAleatorio(LINHAS);
+            int c = numeroAleatorio(COLS);
+
+            if (salaNormal[l][c] == 0) {
+                salaNormal[l][c] = cinefilo->id;
+
+                cinefilo->possuiReserva = true;
+                cinefilo->salaReservada = ID_SALA_NORMAL;
+                cinefilo->linha = l;
+                cinefilo->coluna = c;
+
+                ocupadosNormal++;
+
+                printf("[RESERVA]\n"
+                       "Cliente : %d\n"
+                       "Sala    : NORMAL (%d)\n"
+                       "Assento : [%d,%d]\n"
+                       "Status  : SUCESSO\n\n",
+                       cinefilo->id,
+                       ID_SALA_NORMAL,
+                       l + 1,
+                       c + 1);
+
+                sem_post(&semNormal);
+                return;
+            }
+
+            tentativas++;
+        }
+
+        printf("Cliente %d nao encontrou assento livre na Sala Normal.\n",
+               cinefilo->id);
+
+        sem_post(&semNormal);
+    }
+
+    else {
+        printf("ID de sala invalido: %d\n", idSala);
+    }
 }
 
-// CANCELAR RESERVA: libera uma poltrona aleatória ocupada
-void cancelarReservaAleatoria(int idSala, int cliente_id) {
-    bool (*sala)[COLS];
-    int *contadorOcupados;
-    pthread_mutex_t *mutexSala;
-
-    selecionarSala(idSala, &sala, &contadorOcupados, &mutexSala);
-
-    pthread_mutex_lock(mutexSala);
-
-    if (*contadorOcupados <= 0) {
-        printf("Sala %d vazia! Cliente %d nao tinha reserva para cancelar\n",
-               idSala, cliente_id);
-
-        pthread_mutex_unlock(mutexSala);
+void cancelarReserva(Cinefilo *cinefilo) {
+    if (!cinefilo->possuiReserva) {
+        printf("Cinefilo %d nao possui uma reserva.\n", cinefilo->id);
         return;
     }
 
-    int l;
-    int c;
+    if (cinefilo->salaReservada == ID_SALA_VIP) {
+        sem_wait(&semVIP);
 
-    /*
-        Enquanto houver assento ocupado, sorteia até encontrar
-        uma poltrona ocupada para cancelar.
-    */
-    do {
-        l = rand() % LINHAS;
-        c = rand() % COLS;
-    } while (sala[l][c] == false);
+        salaVIP[cinefilo->linha][cinefilo->coluna] = 0;
+        ocupadosVIP--;
 
-    sala[l][c] = false;
-    (*contadorOcupados)--;
+        printf("[CANCELAMENTO]\n"
+               "Cliente : %d\n"
+               "Sala    : VIP (%d)\n"
+               "Assento : [%d,%d]\n"
+               "Status  : SUCESSO\n\n",
+               cinefilo->id,
+               ID_SALA_VIP,
+               cinefilo->linha + 1,
+               cinefilo->coluna + 1);
 
-    printf("Cliente %d CANCELOU assento [%d, %d] na Sala %d\n",
-           cliente_id, l + 1, c + 1, idSala);
+        cinefilo->possuiReserva = false;
+        cinefilo->salaReservada = 0;
+        cinefilo->linha = -1;
+        cinefilo->coluna = -1;
 
-    pthread_mutex_unlock(mutexSala);
-}
-
-// AÇÃO: alterna as operações simuladas
-void acaoClienteSimulado(int cliente_id) {
-    int idSala;
-
-    if (rand() % 2 == 0) {
-        idSala = ID_SALA_VIP;
-    } else {
-        idSala = ID_SALA_NORMAL;
+        sem_post(&semVIP);
     }
 
-    int operacao = rand() % 2; // 0 = reservar, 1 = cancelar
+    else if (cinefilo->salaReservada == ID_SALA_NORMAL) {
+        sem_wait(&semNormal);
 
-    if (operacao == 0) {
-        reservarAssentoAleatorio(idSala, cliente_id);
-    } else {
-        cancelarReservaAleatoria(idSala, cliente_id);
+        salaNormal[cinefilo->linha][cinefilo->coluna] = 0;
+        ocupadosNormal--;
+
+        printf("[CANCELAMENTO]\n"
+               "Cliente : %d\n"
+               "Sala    : NORMAL (%d)\n"
+               "Assento : [%d,%d]\n"
+               "Status  : SUCESSO\n\n",
+               cinefilo->id,
+               ID_SALA_NORMAL,
+               cinefilo->linha + 1,
+               cinefilo->coluna + 1);
+
+        cinefilo->possuiReserva = false;
+        cinefilo->salaReservada = 0;
+        cinefilo->linha = -1;
+        cinefilo->coluna = -1;
+
+        sem_post(&semNormal);
+    }
+
+    else {
+        printf("Reserva invalida para o cinefilo %d.\n", cinefilo->id);
     }
 }
 
-// Função executada por cada thread
-void *threadCliente(void *arg) {
-    ClienteArgs *dados = (ClienteArgs *) arg;
-
-    acaoClienteSimulado(dados->cliente_id);
-
-    pthread_exit(NULL);
-}
-
-// VERIFICA INTEGRIDADE: compara contadores com as matrizes
+// Verifica integridade comparando os contadores com as matrizes
 void verifica_integridade() {
     int somaVIP = 0;
     int somaNormal = 0;
 
     /*
-        Travamos os dois mutexes para garantir que ninguém
-        esteja alterando as salas durante a auditoria.
+        Trava as duas salas para auditar um estado consistente.
     */
-    pthread_mutex_lock(&mutexVIP);
-    pthread_mutex_lock(&mutexNormal);
+    sem_wait(&semVIP);
+    sem_wait(&semNormal);
 
     for (int i = 0; i < LINHAS; i++) {
         for (int j = 0; j < COLS; j++) {
-            if (salaVIP[i][j]) {
+            if (salaVIP[i][j] != 0)
                 somaVIP++;
-            }
 
-            if (salaNormal[i][j]) {
+            if (salaNormal[i][j] != 0)
                 somaNormal++;
-            }
         }
     }
 
     printf("\n[AUDITORIA DE INTEGRIDADE]\n");
 
-    printf("Sala VIP (ID: %d)    -> Contador: %d | Fisico na Matriz: %d -> %s\n",
+    printf("Sala VIP    (ID:%d) -> Contador: %d | Fisico na Matriz: %d -> %s\n",
            ID_SALA_VIP,
            ocupadosVIP,
            somaVIP,
@@ -230,52 +322,98 @@ void verifica_integridade() {
            somaNormal,
            (ocupadosNormal == somaNormal) ? "OK" : "CORROMPIDO");
 
-    pthread_mutex_unlock(&mutexNormal);
-    pthread_mutex_unlock(&mutexVIP);
+    sem_post(&semNormal);
+    sem_post(&semVIP);
+}
+
+void acaoClienteSimulado(Cinefilo *cinefilo) {
+    int idSala;
+    int operacao;
+
+    if (numeroAleatorio(2) == 0)
+        idSala = ID_SALA_VIP;
+    else
+        idSala = ID_SALA_NORMAL;
+
+    operacao = numeroAleatorio(2);
+
+    if (operacao == 0)
+        reservarAssentoAleatorio(idSala, cinefilo);
+    else
+        cancelarReserva(cinefilo);
+}
+
+/*
+    Funcao executada por cada thread.
+*/
+void *threadCliente(void *arg) {
+    Cinefilo *cinefilo = (Cinefilo *) arg;
+
+    acaoClienteSimulado(cinefilo);
+
+    return NULL;
 }
 
 int main() {
     srand(42);
 
     pthread_t threads[TOTAL_CLIENTES];
-    ClienteArgs clientes[TOTAL_CLIENTES];
+    Cinefilo clientes[MAX_CLIENTES];
 
-    printf("=== INICIANDO SIMULACAO MULTITHREAD DE BILHETERIA ===\n");
-    printf("Simulando %d clientes acessando o sistema...\n\n", TOTAL_CLIENTES);
+    /*
+        Inicializacao dos semaforos.
 
-    // Cria as threads
+        O segundo parametro 0 indica uso entre threads do mesmo processo.
+        O valor 1 faz o semaforo funcionar como mutex.
+    */
+    sem_init(&semVIP, 0, 1);
+    sem_init(&semNormal, 0, 1);
+    sem_init(&semRandom, 0, 1);
+
+    for (int i = 0; i < MAX_CLIENTES; i++) {
+        clientes[i].id = i + 1;
+        clientes[i].possuiReserva = false;
+        clientes[i].linha = -1;
+        clientes[i].coluna = -1;
+        clientes[i].salaReservada = 0;
+    }
+
+    printf("=========================================\n");
+    printf(" SISTEMA DE BILHETERIA - MODO MULTITHREAD\n");
+    printf("          SINCRONIZACAO COM SEMAFOROS\n");
+    printf("=========================================\n");
+
+    /*
+        Cada cliente sera representado por uma thread.
+    */
     for (int i = 0; i < TOTAL_CLIENTES; i++) {
-        clientes[i].cliente_id = i + 1;
+        printf("\nCriando thread do cliente %d\n", clientes[i].id);
 
-        int resultado = pthread_create(
-            &threads[i],
-            NULL,
-            threadCliente,
-            &clientes[i]
-        );
-
-        if (resultado != 0) {
-            printf("Erro ao criar thread do cliente %d\n", i + 1);
+        if (pthread_create(&threads[i], NULL, threadCliente, &clientes[i]) != 0) {
+            printf("Erro ao criar thread do cliente %d\n", clientes[i].id);
             exit(EXIT_FAILURE);
         }
     }
 
-    // Espera todas as threads terminarem
+    /*
+        Espera todas as threads terminarem.
+    */
     for (int i = 0; i < TOTAL_CLIENTES; i++) {
         pthread_join(threads[i], NULL);
     }
 
-    printf("\n===================================================\n");
-    printf("===          FIM DA SIMULACAO MULTITHREAD       ===\n");
-    printf("===================================================\n");
+    printf("\n\n=========================================\n");
+    printf("     FIM DA SIMULACAO MULTITHREAD\n");
+    printf("=========================================\n");
 
     mostrarMapaSala(ID_SALA_VIP);
     mostrarMapaSala(ID_SALA_NORMAL);
 
     verifica_integridade();
 
-    pthread_mutex_destroy(&mutexVIP);
-    pthread_mutex_destroy(&mutexNormal);
+    sem_destroy(&semVIP);
+    sem_destroy(&semNormal);
+    sem_destroy(&semRandom);
 
     return 0;
 }
