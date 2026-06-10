@@ -11,9 +11,9 @@
 #define ID_SALA_VIP -1
 #define ID_SALA_NORMAL 1
 
-#define MAX_CLIENTES 100
-#define TOTAL_CLIENTES 100
-#define ACOES_POR_CLIENTE 5
+#define MAX_CLIENTES 35
+#define TOTAL_CLIENTES 10
+#define ACOES_POR_CLIENTE 1
 
 typedef struct {
     int id;
@@ -27,12 +27,10 @@ typedef struct {
 int salaVIP[LINHAS][COLS] = {0};
 int salaNormal[LINHAS][COLS] = {0};
 
-// Contadores globais de assentos ocupados
 int ocupadosVIP = 0;
 int ocupadosNormal = 0;
 int capacidadeTotal = LINHAS * COLS;
 
-// Imprime o estado atual de ocupacao de uma sala usando o ID numerico
 void mostrarMapaSala(int idSala) {
     int (*sala)[COLS];
     int ocupados;
@@ -69,7 +67,6 @@ void mostrarMapaSala(int idSala) {
     printf("=========================================\n");
 }
 
-// Reserva poltrona aleatoria
 void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
     if (cinefilo->possuiReserva) {
         printf("Cinefilo %d ja possui uma reserva.\n", cinefilo->id);
@@ -87,11 +84,7 @@ void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
         contadorOcupados = &ocupadosNormal;
     }
 
-    /*
-        PROBLEMA:
-        Esta verificacao nao esta protegida.
-        Outra thread pode alterar o contador logo depois.
-    */
+
     if (*contadorOcupados >= capacidadeTotal) {
         printf("Sala %d cheia!\n", idSala);
         return;
@@ -103,24 +96,11 @@ void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
         int l = rand() % LINHAS;
         int c = rand() % COLS;
 
-        /*
-            PROBLEMA:
-            A thread verifica que o assento esta livre,
-            mas antes de reservar outra thread pode pegar o mesmo assento.
-        */
+  
         if (sala[l][c] == 0) {
 
-            /*
-                Pequena pausa proposital para aumentar a chance
-                de condicao de corrida.
-            */
             usleep(1000);
 
-            /*
-                PROBLEMA:
-                Outra thread pode ter escrito nesse assento durante o usleep.
-                Mesmo assim, esta thread escreve por cima.
-            */
             sala[l][c] = cinefilo->id;
 
             cinefilo->possuiReserva = true;
@@ -128,11 +108,6 @@ void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
             cinefilo->linha = l;
             cinefilo->coluna = c;
 
-            /*
-                PROBLEMA:
-                Incremento nao atomico.
-                Duas threads podem atualizar o contador ao mesmo tempo.
-            */
             int valorAtual = *contadorOcupados;
             usleep(1000);
             *contadorOcupados = valorAtual + 1;
@@ -173,17 +148,10 @@ void cancelarReserva(Cinefilo *cinefilo) {
         contadorOcupados = &ocupadosNormal;
     }
 
-    /*
-        PROBLEMA:
-        Nada impede que outro trecho esteja mexendo
-        nessa mesma matriz ao mesmo tempo.
-    */
+
     sala[cinefilo->linha][cinefilo->coluna] = 0;
 
-    /*
-        PROBLEMA:
-        Decremento nao atomico.
-    */
+
     int valorAtual = *contadorOcupados;
     usleep(1000);
     *contadorOcupados = valorAtual - 1;
@@ -250,18 +218,14 @@ void acaoClienteSimulado(Cinefilo *cinefilo) {
         cancelarReserva(cinefilo);
 }
 
-/*
-    Funcao executada por cada thread.
-*/
+
 void *threadCliente(void *arg) {
     Cinefilo *cinefilo = (Cinefilo *) arg;
 
     for (int i = 0; i < ACOES_POR_CLIENTE; i++) {
         acaoClienteSimulado(cinefilo);
 
-        /*
-            Pausa pequena para aumentar a alternancia entre threads.
-        */
+        
         usleep(1000);
     }
 
@@ -287,6 +251,8 @@ int main() {
     printf("        SEM SINCRONIZACAO\n");
     printf("=========================================\n");
 
+    clock_t inicio = clock();
+
     for (int i = 0; i < TOTAL_CLIENTES; i++) {
         if (pthread_create(&threads[i], NULL, threadCliente, &clientes[i]) != 0) {
             printf("Erro ao criar thread do cliente %d\n", clientes[i].id);
@@ -298,6 +264,9 @@ int main() {
         pthread_join(threads[i], NULL);
     }
 
+    clock_t fim = clock();
+    double tempoTotal = ((double)(fim-inicio))/CLOCKS_PER_SEC;
+
     printf("\n\n=========================================\n");
     printf("     FIM DA SIMULACAO MULTITHREAD\n");
     printf("        SEM SINCRONIZACAO\n");
@@ -307,6 +276,8 @@ int main() {
     mostrarMapaSala(ID_SALA_NORMAL);
 
     verifica_integridade();
+
+    printf("Tempo de execução: %.6f segundos\n", tempoTotal);
 
     return 0;
 }
