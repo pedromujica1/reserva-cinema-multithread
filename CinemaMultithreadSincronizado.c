@@ -12,7 +12,7 @@
 #define ID_SALA_NORMAL 1
 
 #define TOTAL_CLIENTES 10
-#define MAX_CLIENTES 100
+#define MAX_CLIENTES 35
 
 typedef struct {
     int id;
@@ -26,27 +26,15 @@ typedef struct {
 int salaVIP[LINHAS][COLS] = {0};
 int salaNormal[LINHAS][COLS] = {0};
 
-// Contadores globais de assentos ocupados
 int ocupadosVIP = 0;
 int ocupadosNormal = 0;
 int capacidadeTotal = LINHAS * COLS;
 
-/*
-    Semaforos usados como mutex.
 
-    Valor inicial 1:
-    - uma thread entra na secao critica
-    - as outras esperam
-*/
 sem_t semVIP;
 sem_t semNormal;
 
-/*
-    Semaforo para proteger o rand().
 
-    Como varias threads podem chamar rand() ao mesmo tempo,
-    usamos um semaforo separado para evitar acesso simultaneo.
-*/
 sem_t semRandom;
 
 int numeroAleatorio(int limite) {
@@ -59,7 +47,6 @@ int numeroAleatorio(int limite) {
     return valor;
 }
 
-// Imprime o estado atual de ocupacao de uma sala usando o ID numerico
 void mostrarMapaSala(int idSala) {
     if (idSala == ID_SALA_VIP) {
         sem_wait(&semVIP);
@@ -120,10 +107,6 @@ void mostrarMapaSala(int idSala) {
 void reservarAssentoAleatorio(int idSala, Cinefilo *cinefilo) {
     int tentativas = 0;
 
-    /*
-        Como cada cinefilo pertence a uma unica thread nesta simulacao,
-        essa verificacao nao precisa de semaforo proprio.
-    */
     if (cinefilo->possuiReserva) {
         printf("Cinefilo %d ja possui uma reserva.\n", cinefilo->id);
         return;
@@ -287,14 +270,13 @@ void cancelarReserva(Cinefilo *cinefilo) {
     }
 }
 
-// Verifica integridade comparando os contadores com as matrizes
 void verifica_integridade() {
     int somaVIP = 0;
     int somaNormal = 0;
 
-    /*
-        Trava as duas salas para auditar um estado consistente.
-    */
+    
+    //Trava as duas salas para auditar um estado consistente.
+    
     sem_wait(&semVIP);
     sem_wait(&semNormal);
 
@@ -343,9 +325,7 @@ void acaoClienteSimulado(Cinefilo *cinefilo) {
         cancelarReserva(cinefilo);
 }
 
-/*
-    Funcao executada por cada thread.
-*/
+
 void *threadCliente(void *arg) {
     Cinefilo *cinefilo = (Cinefilo *) arg;
 
@@ -360,12 +340,7 @@ int main() {
     pthread_t threads[TOTAL_CLIENTES];
     Cinefilo clientes[MAX_CLIENTES];
 
-    /*
-        Inicializacao dos semaforos.
 
-        O segundo parametro 0 indica uso entre threads do mesmo processo.
-        O valor 1 faz o semaforo funcionar como mutex.
-    */
     sem_init(&semVIP, 0, 1);
     sem_init(&semNormal, 0, 1);
     sem_init(&semRandom, 0, 1);
@@ -383,9 +358,8 @@ int main() {
     printf("          SINCRONIZACAO COM SEMAFOROS\n");
     printf("=========================================\n");
 
-    /*
-        Cada cliente sera representado por uma thread.
-    */
+    clock_t inicio = clock();
+
     for (int i = 0; i < TOTAL_CLIENTES; i++) {
         printf("\nCriando thread do cliente %d\n", clientes[i].id);
 
@@ -395,12 +369,14 @@ int main() {
         }
     }
 
-    /*
-        Espera todas as threads terminarem.
-    */
+
     for (int i = 0; i < TOTAL_CLIENTES; i++) {
         pthread_join(threads[i], NULL);
     }
+
+    clock_t fim = clock();
+    double tempoTotal = ((double)(fim-inicio))/CLOCKS_PER_SEC;
+
 
     printf("\n\n=========================================\n");
     printf("     FIM DA SIMULACAO MULTITHREAD\n");
@@ -414,6 +390,8 @@ int main() {
     sem_destroy(&semVIP);
     sem_destroy(&semNormal);
     sem_destroy(&semRandom);
+
+    printf("Tempo de execução: %.6f segundos\n", tempoTotal);
 
     return 0;
 }
